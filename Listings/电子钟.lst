@@ -1,0 +1,468 @@
+C51 COMPILER V9.56.0.0   ______                                                            02/04/2023 16:53:32 PAGE 1   
+
+
+C51 COMPILER V9.56.0.0, COMPILATION OF MODULE ______
+OBJECT MODULE PLACED IN .\Objects\µç×ÓÖÓ.obj
+COMPILER INVOKED BY: D:\keil-5\C51\BIN\C51.EXE µç×ÓÖÓ.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\µç×
+                    -ÓÖÓ.lst) TABS(2) OBJECT(.\Objects\µç×ÓÖÓ.obj)
+
+line level    source
+
+   1          #include<STC15F2K60S2.h>
+   2          #include<ds1302.h>
+   3          #include<onewire.h>
+   4          #define uint unsigned int
+   5          #define uchar unsigned char
+   6          uchar code t_display[]={                       //±ê×¼×Ö¿â
+   7          //   0    1    2    3    4    5    6    7    8    9    A    B    C    D    E    F
+   8              0x3F,0x06,0x5B,0x4F,0x66,0x6D,0x7D,0x07,0x7F,0x6F,0x77,0x7C,0x39,0x5E,0x79,0x71,
+   9          //black  -     H    J    K    L    N    o   P    U     t    G    Q    r   M    y
+  10              0x00,0x40,0x76,0x1E,0x70,0x38,0x37,0x5C,0x73,0x3E,0x78,0x3d,0x67,0x50,0x37,0x6e,
+  11              0xBF,0x86,0xDB,0xCF,0xE6,0xED,0xFD,0x87,0xFF,0xEF,0x46};    //0. 1. 2. 3. 4. 5. 6. 7. 8. 9. -1
+  12          uchar code t_com[]={0x80,0x40,0x20,0x10,0x08,0x04,0x02,0x01};    //Î»Âë
+  13          uchar number[8]={16,16,17,16,16,17,16,16};
+  14          uchar Trg,Cont;
+  15          uchar Time[3];
+  16          uchar initTime[] = {50,59,23};
+  17          uchar Clock[3]={0,0,0};
+  18          uchar flag,rd_count;
+  19          uint p=0;
+  20          uchar key_flag=0;
+  21          uchar led_flag=0;
+  22          uchar temp_flag=0;
+  23          uchar mode=0;
+  24          uint Time_set=0,Clock_set=0;
+  25          long tt;
+  26          //±äÁ¿¶¨Òå
+  27          
+  28          void Delay10ms()    //@11.0592MHz
+  29          {
+  30   1        unsigned char i, j;
+  31   1      
+  32   1        i = 108;
+  33   1        j = 145;
+  34   1        do
+  35   1        {
+  36   2          while (--j);
+  37   2        } while (--i);
+  38   1      }
+  39          
+  40          
+  41          //¹Ø±Õ·äÃùÆ÷²¢³õÊ¼»¯
+  42          void init()
+  43          {
+  44   1        P2=0xa0;P0=0x00;P2=0x00;
+  45   1        P2=0x80;P0=0xff;P2=0x00;
+  46   1      }
+  47          //°´¼üÈý¶Î´úÂë
+  48          void button()
+  49          {
+  50   1        uchar Readdata = P3^0xff;
+  51   1        Trg=Readdata & (Readdata ^ Cont);
+  52   1        Cont=Readdata;
+  53   1      }
+  54          //¶¨Ê±Æ÷³õÊ¼»¯
+C51 COMPILER V9.56.0.0   ______                                                            02/04/2023 16:53:32 PAGE 2   
+
+  55          void Timer0Init(void)   //1ºÁÃë@11.0592MHz
+  56          {
+  57   1        AUXR |= 0x80;   //¶¨Ê±Æ÷Ê±ÖÓ1TÄ£Ê½
+  58   1        TMOD &= 0xF0;   //ÉèÖÃ¶¨Ê±Æ÷Ä£Ê½
+  59   1        TL0 = 0xCD;   //ÉèÖÃ¶¨Ê±³õÖµ
+  60   1        TH0 = 0xD4;   //ÉèÖÃ¶¨Ê±³õÖµ
+  61   1        TF0 = 0;    //Çå³ýTF0±êÖ¾
+  62   1        TR0 = 1;    //¶¨Ê±Æ÷0¿ªÊ¼¼ÆÊ±
+  63   1        EA=1;
+  64   1        ET0=1;
+  65   1      }
+  66          
+  67          void Time_0() interrupt 1
+  68          {
+  69   1        static uint count=0,C=0,led=0;
+  70   1        count++;C++;
+  71   1        if(count>=10)   //Ã¿10ºÁÃë¼ì²âÒ»´ÎÊÇ·ñÓÐ°´¼ü°´ÏÂ
+  72   1        {
+  73   2          count=0;
+  74   2          key_flag=1;
+  75   2        }
+  76   1        //ÊýÂë¹Ü¶¯Ì¬ÏÔÊ¾
+  77   1        if(C>=2)
+  78   1        {
+  79   2          C=0;
+  80   2          P0=t_com[p];P2=0xc0;P2=0x00;
+  81   2          P0=~t_display[number[p]];P2=0xe0;P2=0x00;
+  82   2          p++;
+  83   2        }
+  84   1        if(p>=8)
+  85   1          p=0;
+  86   1        rd_count++;   //Ê±ÖÓµÄÃë¼ÆÊ±
+  87   1        
+  88   1        //´Ë´¦ÎªledÉÁË¸´¦Àí
+  89   1        if(led_flag==1)
+  90   1        {
+  91   2          led++;
+  92   2          if(led%400>=199&&led%400<=399)
+  93   2          {
+  94   3            P2 = 0x80;P0 = 0xfe;P2 = 0;
+  95   3          }
+  96   2          else
+  97   2          {
+  98   3            P2 = 0x80;P0 = 0xff;P2 = 0;
+  99   3          }
+ 100   2        }
+ 101   1        if(led>=2000) //¿ÉÄÜ´æÔÚÎÊÌâ£¬´Ë´¦ledµÆÉÁË¸ÖØ¸´Á½±é£¬ËùÒÔ½«Ô­±¾µÄ5s£¨5000ms£©¸ÄÎªÁË2s£¨2000ms£©
+ 102   1        {             //µ«Êµ¼ÊÉÁË¸×ÜÊ±³£È·ÊµÎª5s¡£
+ 103   2          led=0;
+ 104   2          led_flag=0;
+ 105   2          P2 = 0x80;P0 = 0xff;P2 = 0;
+ 106   2        }
+ 107   1      }
+ 108          
+ 109          void key_function()
+ 110          {
+ 111   1        //Ê±¼äÏÔÊ¾µ÷ÊÔ
+ 112   1        if(Trg&0x01)
+ 113   1        {
+ 114   2          if(flag==1&&Time_set==0)
+ 115   2          {
+ 116   3            flag=0;
+C51 COMPILER V9.56.0.0   ______                                                            02/04/2023 16:53:32 PAGE 3   
+
+ 117   3            Time_Stop(Time);
+ 118   3          }
+ 119   2          Time_set++;
+ 120   2        }
+ 121   1        //Ê±¼äÏÔÊ¾Ä£Ê½ÏÂµÄÊ±·ÖÃëµÄ¼Ó¼õ
+ 122   1        if(flag==0&&Time_set==1&&Trg&0x04)
+ 123   1          {
+ 124   2            Time[2] = ++Time[2] % 24;
+ 125   2            if(Time[2]>=24)
+ 126   2                  Time[2]=0;
+ 127   2            setTime(Time);
+ 128   2          }
+ 129   1        if(flag==0&&Time_set==1&&Trg&0x08)
+ 130   1          {
+ 131   2            Time[2] = --Time[2] % 24;
+ 132   2                if(Time[2]<=0)
+ 133   2                  Time[2]=23;
+ 134   2                setTime(Time);
+ 135   2          }
+ 136   1        if(flag==0&&Time_set==2&&Trg&0x04)
+ 137   1          {
+ 138   2            Time[1] = ++Time[1] % 60;
+ 139   2                if(Time[1]>=60)
+ 140   2                  Time[1]=0;
+ 141   2                setTime(Time);
+ 142   2          }
+ 143   1        if(flag==0&&Time_set==2&&Trg&0x08)
+ 144   1          {
+ 145   2            Time[1] = --Time[1] % 60;
+ 146   2                if(Time[1]<=0)
+ 147   2                  Time[1]=59;
+ 148   2                setTime(Time);
+ 149   2          }
+ 150   1        if(flag==0&&Time_set==3&&Trg&0x04)
+ 151   1          {
+ 152   2            Time[0] = ++Time[0] % 60;
+ 153   2                if(Time[0]>=60)
+ 154   2                  Time[0]=0;
+ 155   2                setTime(Time);
+ 156   2          }
+ 157   1        if(flag==0&&Time_set==3&&Trg&0x08)
+ 158   1          {
+ 159   2            Time[0] = --Time[0] % 60;
+ 160   2                if(Time[0]<=0)
+ 161   2                  Time[0]=59;
+ 162   2                setTime(Time);
+ 163   2          }
+ 164   1        
+ 165   1        //ÄÖÖÓÏÔÊ¾µ÷ÊÔ
+ 166   1        if(Trg&0x02)
+ 167   1        {
+ 168   2          mode=++mode%4;
+ 169   2          Clock_set++;
+ 170   2        }
+ 171   1        //ÄÖÖÓÉèÖÃÏÂµÄÊ±·ÖÃëµÄ¼Ó¼õ
+ 172   1        if(mode!=0&&Clock_set==1&&Trg&0x04)
+ 173   1          {
+ 174   2            Clock[2] = ++Clock[2] % 24;
+ 175   2            if(Clock[2]>=24)
+ 176   2                  Clock[2]=0;
+ 177   2          }
+ 178   1        if(mode!=0&&Clock_set==1&&Trg&0x08)
+C51 COMPILER V9.56.0.0   ______                                                            02/04/2023 16:53:32 PAGE 4   
+
+ 179   1          {
+ 180   2            Clock[2] = --Clock[2] % 24;
+ 181   2            if(Clock[2]<=0)
+ 182   2                  Clock[2]=23;
+ 183   2          }
+ 184   1        if(mode!=0&&Clock_set==2&&Trg&0x04)
+ 185   1          {
+ 186   2            Clock[1] = ++Clock[1] % 60;
+ 187   2            if(Clock[1]>=60)
+ 188   2                  Clock[1]=0;
+ 189   2          }
+ 190   1        if(mode!=0&&Clock_set==2&&Trg&0x08)
+ 191   1          {
+ 192   2            Clock[1] = --Clock[1] % 60;
+ 193   2            if(Clock[1]<=0)
+ 194   2                  Clock[1]=59;
+ 195   2          }
+ 196   1        if(mode!=0&&Clock_set==3&&Trg&0x04)
+ 197   1          {
+ 198   2            Clock[0] = ++Clock[0] % 60;
+ 199   2            if(Clock[0]>=60)
+ 200   2                  Clock[0]=0;
+ 201   2          }
+ 202   1        if(mode!=0&&Clock_set==3&&Trg&0x08)
+ 203   1          {
+ 204   2            Clock[0] = --Clock[0] % 60;
+ 205   2            if(Clock[0]<=0)
+ 206   2                  Clock[0]=59;
+ 207   2          }
+ 208   1        //ÎÂ¶ÈÐÅºÅ¿ØÖÆ
+ 209   1        if(flag==1&&mode==0&&Trg&0x08)
+ 210   1        {
+ 211   2          Delay10ms();
+ 212   2          if(Trg&0x08)
+ 213   2          {
+ 214   3            temp_flag++;
+ 215   3          }
+ 216   2        }
+ 217   1      }
+ 218          
+ 219          void time_math()    //Ê±¼äÏÔÊ¾£¬ÊýÖµ¸³Óè£¬ÆäÖÐnumber[2]ºÍnumber[5]¹Ì¶¨ÎªÐ¡ºáÏß
+ 220          {
+ 221   1          number[0]=Time[0]>=0 ? Time[0]%10 : 0;
+ 222   1          number[1]=Time[0]>=10 ? Time[0]/10 : 0;
+ 223   1          number[3]=Time[1]>=0 ? Time[1]%10 : 0;
+ 224   1          number[4]=Time[1]>=10 ? Time[1]/10 : 0;
+ 225   1          number[6]=Time[2]>=0 ? Time[2]%10 : 0;
+ 226   1          number[7]=Time[2]>=10 ? Time[2]/10 : 0;
+ 227   1          number[2]=number[5]=17;
+ 228   1      }
+ 229          //Ê±¼äÉèÖÃÏÂÊýÂë¹ÜÃðµôµÄÈýÖÖÇé¿ö
+ 230          void time_math_shi()
+ 231          {
+ 232   1          number[0]=Time[0]>=0 ? Time[0]%10 : 0;
+ 233   1          number[1]=Time[0]>=10 ? Time[0]/10 : 0;
+ 234   1          number[3]=Time[1]>=0 ? Time[1]%10 : 0;
+ 235   1          number[4]=Time[1]>=10 ? Time[1]/10 : 0;
+ 236   1          number[6]=16;
+ 237   1          number[7]=16;
+ 238   1          number[2]=number[5]=17;
+ 239   1      }
+ 240          void time_math_fen()
+C51 COMPILER V9.56.0.0   ______                                                            02/04/2023 16:53:32 PAGE 5   
+
+ 241          {
+ 242   1          number[0]=Time[0]>=0 ? Time[0]%10 : 0;
+ 243   1          number[1]=Time[0]>=10 ? Time[0]/10 : 0;
+ 244   1          number[3]=16;
+ 245   1          number[4]=16;
+ 246   1          number[6]=Time[2]>=0 ? Time[2]%10 : 0;
+ 247   1          number[7]=Time[2]>=10 ? Time[2]/10 : 0;
+ 248   1          number[2]=number[5]=17;
+ 249   1      }
+ 250          void time_math_miao()
+ 251          {
+ 252   1          number[0]=16;
+ 253   1          number[1]=16;
+ 254   1          number[3]=Time[1]>=0 ? Time[1]%10 : 0;
+ 255   1          number[4]=Time[1]>=10 ? Time[1]/10 : 0;
+ 256   1          number[6]=Time[2]>=0 ? Time[2]%10 : 0;
+ 257   1          number[7]=Time[2]>=10 ? Time[2]/10 : 0;
+ 258   1          number[2]=number[5]=17;
+ 259   1      }
+ 260          
+ 261          
+ 262          void time_math2()   //ÄÖÖÓÉèÖÃ£¬ÊýÖµ¸³Óè£¬ÆäÖÐnumber[2]ºÍnumber[5]¹Ì¶¨ÎªÐ¡ºáÏß
+ 263          {
+ 264   1        number[0]=Clock[0]>=0 ? Clock[0]%10 : 0;
+ 265   1        number[1]=Clock[0]>=10 ? Clock[0]/10 : 0;
+ 266   1        number[3]=Clock[1]>=0 ? Clock[1]%10 : 0;
+ 267   1        number[4]=Clock[1]>=10 ? Clock[1]/10 : 0;
+ 268   1        number[6]=Clock[2]>=0 ? Clock[2]%10 : 0;
+ 269   1        number[7]=Clock[2]>=10 ? Clock[2]/10 : 0;
+ 270   1        number[2]=number[5]=17;
+ 271   1      }
+ 272          //ÄÖÖÓÉèÖÃÏÂÊýÂë¹ÜÃðµôµÄÈýÖÖÇé¿ö
+ 273          void time_math2_shi()
+ 274          {
+ 275   1        number[0]=Clock[0]>=0 ? Clock[0]%10 : 0;
+ 276   1        number[1]=Clock[0]>=10 ? Clock[0]/10 : 0;
+ 277   1        number[3]=Clock[1]>=0 ? Clock[1]%10 : 0;
+ 278   1        number[4]=Clock[1]>=10 ? Clock[1]/10 : 0;
+ 279   1        number[6]=16;
+ 280   1        number[7]=16;
+ 281   1        number[2]=number[5]=17;
+ 282   1      }
+ 283          void time_math2_fen()
+ 284          {
+ 285   1        number[0]=Clock[0]>=0 ? Clock[0]%10 : 0;
+ 286   1        number[1]=Clock[0]>=10 ? Clock[0]/10 : 0;
+ 287   1        number[3]=16;
+ 288   1        number[4]=16;
+ 289   1        number[6]=Clock[2]>=0 ? Clock[2]%10 : 0;
+ 290   1        number[7]=Clock[2]>=10 ? Clock[2]/10 : 0;
+ 291   1        number[2]=number[5]=17;
+ 292   1      }
+ 293          void time_math2_miao()
+ 294          {
+ 295   1        number[0]=16;
+ 296   1        number[1]=16;
+ 297   1        number[3]=Clock[1]>=0 ? Clock[1]%10 : 0;
+ 298   1        number[4]=Clock[1]>=10 ? Clock[1]/10 : 0;
+ 299   1        number[6]=Clock[2]>=0 ? Clock[2]%10 : 0;
+ 300   1        number[7]=Clock[2]>=10 ? Clock[2]/10 : 0;
+ 301   1        number[2]=number[5]=17;
+ 302   1      }
+C51 COMPILER V9.56.0.0   ______                                                            02/04/2023 16:53:32 PAGE 6   
+
+ 303          
+ 304          
+ 305          void main()
+ 306          {
+ 307   1        init();
+ 308   1        Timer0Init();
+ 309   1        setTime(initTime);    //ÉèÖÃ³õÊ¼Ê±¼ä23£º59£º50
+ 310   1        flag=1;   //Ä¬ÈÏÎªÔËÐÐ×´Ì¬
+ 311   1        mode=0;   //Ä¬ÈÏÊÇÊ±¼äÏÔÊ¾Ä£Ê½
+ 312   1        led_flag=0;
+ 313   1        while(DS18B20_Get()*0.0625==100);//µÈ´ýÄ¬ÈÏÊý¾Ý100ÏÔÊ¾½áÊø
+ 314   1        while(1)
+ 315   1        {
+ 316   2          int a=520;
+ 317   2          tt = DS18B20_Get(); //»ñÈ¡ÎÂ¶È
+ 318   2          tt = tt * 0.0625;
+ 319   2          //²»Í¬Ä£Ê½£¨mode£©ÏÂµÄ¹¦ÄÜ
+ 320   2              if(mode==0&&temp_flag%2==0) //Ê±¼äÉèÖÃÄ£Ê½
+ 321   2            {
+ 322   3              if(flag==0&&Time_set==1)
+ 323   3              {
+ 324   4                while(a--)
+ 325   4                {
+ 326   5                  time_math_shi();
+ 327   5                }
+ 328   4              }
+ 329   3              else if(flag==0&&Time_set==2)
+ 330   3              {
+ 331   4                while(a--)
+ 332   4                {
+ 333   5                  time_math_fen();
+ 334   5                }
+ 335   4              }
+ 336   3              else if(flag==0&&Time_set==3)
+ 337   3              {
+ 338   4                while(a--)
+ 339   4                {
+ 340   5                  time_math_miao();
+ 341   5                }
+ 342   4              }
+ 343   3              time_math();
+ 344   3              if(key_flag==1)   //¶Ô°´¼üÅÐ¶Ï²¢×÷³ö¾ö²ß
+ 345   3              {
+ 346   4                key_flag=0;
+ 347   4                button();
+ 348   4                key_function();
+ 349   4              }
+ 350   3            }
+ 351   2            else if(mode!=0&&temp_flag%2==0)//ÄÖÖÓÉèÖÃÄ£Ê½
+ 352   2            {
+ 353   3              if(mode==1)
+ 354   3              {
+ 355   4                while(a--)
+ 356   4                {
+ 357   5                  time_math2_shi();
+ 358   5                }
+ 359   4              }
+ 360   3              else if(mode==2)
+ 361   3              {
+ 362   4                while(a--)
+ 363   4                {
+ 364   5                  time_math2_fen();
+C51 COMPILER V9.56.0.0   ______                                                            02/04/2023 16:53:32 PAGE 7   
+
+ 365   5                }
+ 366   4              }
+ 367   3              else if(mode==3)
+ 368   3              {
+ 369   4                while(a--)
+ 370   4                {
+ 371   5                  time_math2_miao();
+ 372   5                }
+ 373   4              }
+ 374   3              time_math2();
+ 375   3              if(key_flag==1)   //¶Ô°´¼üÅÐ¶Ï²¢×÷³ö¾ö²ß
+ 376   3              {
+ 377   4                key_flag=0;
+ 378   4                button();
+ 379   4                key_function();
+ 380   4              }
+ 381   3            }
+ 382   2          //¶ÔÃëÊý£¬Ê±¼äÉèÖÃµÄÑ¡ÔñÖØÖÃ£¬ÄÖÖÓÉèÖÃµÄÖØÖÃ
+ 383   2          if(rd_count>=100)   //Ã¿¹ý1s£¬¶ÔÓ¦Ê±¼ä±ä»¯
+ 384   2          {
+ 385   3            rd_count=0;
+ 386   3            if(flag==1)
+ 387   3              getTime(Time);
+ 388   3          }
+ 389   2          if(Time_set>=4)
+ 390   2          {
+ 391   3            flag=1;
+ 392   3            Time_set=0;
+ 393   3          }
+ 394   2          if(Clock_set>=4)
+ 395   2          {
+ 396   3            Clock_set=0;
+ 397   3          }
+ 398   2          //²éÑ¯ÄÖÖÓÊ±¼äÊÇ·ñµ½ÁË
+ 399   2          if(Time[1]==Clock[1]&&Time[2]==Clock[2])
+ 400   2          {
+ 401   3            if(Time[0]==Clock[0]||Time[0]-1==Clock[0]||Time[0]-2==Clock[0]||Time[0]-3==Clock[0]||Time[0]-4==Clock[0
+             -])
+ 402   3              led_flag=1;
+ 403   3            if(key_flag==1)   //¶Ô°´¼üÅÐ¶Ï²¢×÷³ö¾ö²ß
+ 404   3              {
+ 405   4                key_flag=0;
+ 406   4                button();
+ 407   4                key_function();
+ 408   4              }
+ 409   3          }
+ 410   2          else
+ 411   2          {
+ 412   3            led_flag=0;
+ 413   3          }
+ 414   2          //ÏÔÊ¾ÎÂ¶È
+ 415   2          if(temp_flag%2==1)
+ 416   2          {
+ 417   3            if(key_flag==1)   //¶Ô°´¼üÅÐ¶Ï²¢×÷³ö¾ö²ß
+ 418   3              {
+ 419   4                key_flag=0;
+ 420   4                button();
+ 421   4                key_function();
+ 422   4              }
+ 423   3            number[7]=number[6]=number[5]=number[4]=number[3]=16;
+ 424   3            number[2]=tt/10;
+ 425   3            number[1]=tt%10;
+C51 COMPILER V9.56.0.0   ______                                                            02/04/2023 16:53:32 PAGE 8   
+
+ 426   3            number[0]=12;
+ 427   3          }
+ 428   2        }
+ 429   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   2243    ----
+   CONSTANT SIZE    =     51    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     41       2
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
